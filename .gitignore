@@ -1,0 +1,47 @@
+# --- Python bytecode / caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Optional central pycache dir (if you use PYTHONPYCACHEPREFIX=.pycache)
+.pycache/
+
+# --- Virtual environments ---
+.venv/
+
+# --- Packaging / build artifacts ---
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+
+# --- Test / tooling caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Local data / databases ---
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Columnar / large local files ---
+*.parquet
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
