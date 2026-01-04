@@ -15,7 +15,7 @@ Windows (PowerShell):
 
 macOS / Linux (bash/zsh):
 1) Create a venv:
-   uv venv --python 3.12
+   uv venv --python 3.13
 2) Install dependencies:
    uv sync
 
@@ -25,10 +25,10 @@ Notes
 
 ## Running commands
 
-Run CLIs (recommended: no venv activation needed):
-- uv run pm-ingest-leaderboard --help
-- uv run pm-ingest-all-leaderboards --dt 2026-01-03
-- uv run pm-dash
+- uv run scanner-app
+- uv run scanner-api
+- uv run scanner-ingest --symbol aapl.us
+- uv run scanner-scan --symbol aapl.us
 
 Optional: activate the venv (only if you want to run commands without `uv run`)
 Windows:
