@@ -11,9 +11,9 @@ from scanner_bot.infra.db.sqlite import SQLiteDB
 
 
 class SQLiteBarStore(BarStore):
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path,  create_if_not_exists: bool = False) -> None:
         # SQLiteDB ensures the file exists + schema is applied (idempotent)
-        self.db = SQLiteDB(db_path)
+        self.db = SQLiteDB(db_path, create_if_not_exists)
 
     def upsert_bars(self, bars: Iterable[Bar]) -> int:
         rows: list[tuple[object, ...]] = []

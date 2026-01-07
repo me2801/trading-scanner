@@ -22,74 +22,12 @@ SLEEP_BETWEEN_BATCHES_SEC = 1.0
 # Put your messy NASDAQ: / NYSE: list in here.
 TICKERS_FILE = Path("books/tickers.txt")
 
-DEFAULT_RAW_TICKERS = r"""
-NASDAQ:GOOGL,
-NASDAQ:AMZN,
-NASDAQ:AMGN,
-NASDAQ:AAPL,
-NASDAQ:AMAT,
-NASDAQ:ASML,
-NASDAQ:BIIB,
-NASDAQ:AVGO,
-NASDAQ:CSCO,
-NASDAQ:CSX,
-NASDAQ:GILD,
-NASDAQ:INTC,
-NASDAQ:ISRG
-NASDAQ:META,
-NASDAQ:MU,
-NASDAQ:MSFT,
-NASDAQ:NDAQ,
-NASDAQ:NVDA,
-NASDAQ:PLTR,
-NASDAQ:PEP,
-NASDAQ:QCOM,
-NASDAQ:ADP,
-NASDAQ:PYPL,
-NASDAQ:TXN,
-NASDAQ:AMD,
-NASDAQ:ADBE,
-NASDAQ:MDLZ,
-NASDAQ:CHTR,
-NASDAQ:SBUX,
-NASDAQ:CMCSA,
-NASDAQ:BIDU,
-NYSE:FI,
-NASDAQ:COST,
-NASDAQ:TMUS,
-NASDAQ:NFLX,
-"""
-# -----------------------------------------------------
+from scanner_bot.config.ingest_config import (
+    BATCH_SIZE, DB_PATH, INTERVAL, PERIOD, SLEEP_BETWEEN_BATCHES_SEC, UNIVERSE_TOML
+)
+from scanner_bot.config.universe import load_universe_from_toml
 
 
-def _parse_tickers(raw: str) -> list[str]:
-    parts = re.split(r"[\n\r,]+", raw)
-    out: list[str] = []
-    for p in parts:
-        p = p.strip()
-        if not p:
-            continue
-        if ":" in p:
-            p = p.split(":", 1)[1].strip()  # drop exchange prefix
-        p = re.sub(r"\s+", "", p)  # remove internal spaces
-        if p:
-            out.append(p)
-
-    # de-dupe preserving order
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for t in out:
-        if t not in seen:
-            seen.add(t)
-            deduped.append(t)
-    return deduped
-
-
-def _load_tickers() -> list[str]:
-    if TICKERS_FILE.exists():
-        raw = TICKERS_FILE.read_text(encoding="utf-8")
-        return _parse_tickers(raw)
-    return _parse_tickers(DEFAULT_RAW_TICKERS)
 
 
 def _f(x: object) -> float | None:
@@ -134,11 +72,11 @@ def main() -> None:
             "yfinance is not installed in this env. Install it (uv): `uv add yfinance`"
         ) from e
 
-    tickers = _load_tickers()
+    tickers = load_universe_from_toml(UNIVERSE_TOML)
     if not tickers:
         raise SystemExit("No tickers found (check books/tickers.txt or DEFAULT_RAW_TICKERS).")
 
-    store = SQLiteBarStore(DB_PATH)
+    store = SQLiteBarStore(DB_PATH, create_if_not_exists=True)
 
     print(f"[ingest] db={DB_PATH} interval={INTERVAL} period={PERIOD} tickers={len(tickers)}")
 

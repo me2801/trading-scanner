@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from contextlib import contextmanager
+from collections.abc import Iterator
 
 DDL = """
 CREATE TABLE IF NOT EXISTS bars (
@@ -26,20 +28,42 @@ ON bars(ticker, interval, date);
 """
 
 class SQLiteDB:
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path, create_if_not_exists: bool = False) -> None:
         self.db_path = Path(db_path)
 
-        # if the file is missing, create dirs first
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Special-case tests if you ever use it
+        if str(db_path) == ":memory:":
+            self._path_str = ":memory:"
+            with self.connect() as c:
+                c.executescript(DDL)
+            return
 
-        # ALWAYS ensure schema (safe + idempotent).
-        # This still satisfies “init when missing” because missing file gets created here.
+        self._path_str = str(self.db_path)
+
+        if not self.db_path.exists():
+            if not create_if_not_exists:
+                raise FileNotFoundError(
+                    f"SQLite DB file not found: {self.db_path.resolve()} "
+                    "(likely a wrong relative path)."
+                )
+            # create dirs only when we are allowed to create the DB file
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Ensure schema (safe + idempotent)
         with self.connect() as c:
             c.executescript(DDL)
 
-    def connect(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self.db_path.as_posix())
-        c.row_factory = sqlite3.Row
-        c.execute("PRAGMA journal_mode=WAL;")
-        c.execute("PRAGMA synchronous=NORMAL;")
-        return c
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        con = sqlite3.connect(self.db_path.as_posix())
+        con.row_factory = sqlite3.Row
+        con.execute("PRAGMA journal_mode=WAL;")
+        con.execute("PRAGMA synchronous=NORMAL;")
+        try:
+            yield con
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
