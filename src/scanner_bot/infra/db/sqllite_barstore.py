@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from scanner_bot.core.models import Bar
 from scanner_bot.core.ports import BarStore
@@ -79,6 +79,55 @@ class SQLiteBarStore(BarStore):
         if limit is not None:
             sql += " LIMIT ?"
             args.append(int(limit))
+
+        out: list[Bar] = []
+        with self.db.connect() as c:
+            for r in c.execute(sql, args):
+                out.append(
+                    Bar(
+                        date=date.fromisoformat(r["date"]),
+                        ticker=r["ticker"],
+                        interval=r["interval"],
+                        open=r["open"],
+                        high=r["high"],
+                        low=r["low"],
+                        close=r["close"],
+                        adj_close=r["adj_close"],
+                        volume=r["volume"],
+                    )
+                )
+        return out
+
+    def list_bars_multi(
+        self,
+        interval: str,
+        tickers: Sequence[str] | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[Bar]:
+        where = ["interval = ?"]
+        args: list[object] = [interval]
+
+        if tickers is not None:
+            tickers = list(tickers)
+            if not tickers:
+                return []
+            where.append(f"ticker IN ({','.join(['?'] * len(tickers))})")
+            args.extend(tickers)
+
+        if start is not None:
+            where.append("date >= ?")
+            args.append(start.isoformat())
+        if end is not None:
+            where.append("date <= ?")
+            args.append(end.isoformat())
+
+        sql = f"""
+        SELECT ticker, date, interval, open, high, low, close, adj_close, volume
+        FROM bars
+        WHERE {" AND ".join(where)}
+        ORDER BY date ASC
+        """
 
         out: list[Bar] = []
         with self.db.connect() as c:
