@@ -1,6 +1,6 @@
 CREATE VIEW IF NOT EXISTS v_bars AS
 SELECT
-  b.source_id,
+  t.source_id,
   s.name AS source,
 
   b.ticker_id,
@@ -12,8 +12,8 @@ SELECT
   b.ts_utc_ms,
   b.open, b.high, b.low, b.close, b.adj_close, b.volume
 FROM bars b
-JOIN sources  s ON s.id = b.source_id
 JOIN tickers  t ON t.id = b.ticker_id
+JOIN sources  s ON s.id = t.source_id
 JOIN intervals i ON i.interval_sec = b.interval_sec;
 
 
@@ -32,7 +32,7 @@ SELECT
 FROM v_bars
 GROUP BY source, ticker, interval;
 
--- 2) Latest bar per (source, ticker, interval)
+
 CREATE VIEW IF NOT EXISTS v_bars_latest AS
 SELECT
   source,

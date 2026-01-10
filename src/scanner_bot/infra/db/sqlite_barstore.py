@@ -27,9 +27,12 @@ def _coerce_interval(x: Interval | str) -> Interval:
 
 class SQLiteBarStore:
     """
-    Storage:
-      - bars(source_id, ticker_id, interval_sec, ts_utc_ms, ...)
-      - tickers + sources + intervals normalized
+    Storage (normalized):
+      - sources(id, name, ...)
+      - tickers(id, source_id, ticker, UNIQUE(source_id,ticker))
+      - intervals(interval_sec PK)
+      - bars(ticker_id, interval_sec, ts_utc_ms, ...)  -- no source_id here
+
     Reads:
       - FROM v_bars (joins live in SQL)
     """
@@ -74,12 +77,26 @@ class SQLiteBarStore:
         self._source_id = int(row["id"])
         return self._source_id
 
-    def _ensure_ticker_id(self, c, ticker: str) -> int:
-        row = c.execute("SELECT id FROM tickers WHERE ticker = ?", (ticker,)).fetchone()
-        if row is not None:
-            return int(row["id"])
-        c.execute("INSERT INTO tickers(ticker) VALUES (?)", (ticker,))
-        row2 = c.execute("SELECT id FROM tickers WHERE ticker = ?", (ticker,)).fetchone()
+    def _get_ticker_id(self, c, source_id: int, ticker: str) -> int | None:
+        row = c.execute(
+            "SELECT id FROM tickers WHERE source_id = ? AND ticker = ?",
+            (source_id, ticker),
+        ).fetchone()
+        return int(row["id"]) if row is not None else None
+
+    def _ensure_ticker_id(self, c, source_id: int, ticker: str) -> int:
+        existing = self._get_ticker_id(c, source_id, ticker)
+        if existing is not None:
+            return existing
+
+        c.execute(
+            "INSERT INTO tickers(source_id, ticker) VALUES (?, ?)",
+            (source_id, ticker),
+        )
+        row2 = c.execute(
+            "SELECT id FROM tickers WHERE source_id = ? AND ticker = ?",
+            (source_id, ticker),
+        ).fetchone()
         assert row2 is not None
         return int(row2["id"])
 
@@ -91,11 +108,10 @@ class SQLiteBarStore:
             for b in bars:
                 iv = b.interval
                 self._assert_interval_supported(iv)
-                ticker_id = self._ensure_ticker_id(c, b.ticker)
+                ticker_id = self._ensure_ticker_id(c, source_id, b.ticker)
 
                 rows.append(
                     (
-                        source_id,
                         ticker_id,
                         iv.seconds,
                         _to_utc_ms(b.ts_utc),
@@ -113,11 +129,11 @@ class SQLiteBarStore:
 
             sql = """
             INSERT INTO bars(
-              source_id, ticker_id, interval_sec, ts_utc_ms,
+              ticker_id, interval_sec, ts_utc_ms,
               open, high, low, close, adj_close, volume
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(source_id, ticker_id, interval_sec, ts_utc_ms) DO UPDATE SET
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker_id, interval_sec, ts_utc_ms) DO UPDATE SET
               open      = excluded.open,
               high      = excluded.high,
               low       = excluded.low,
@@ -141,7 +157,9 @@ class SQLiteBarStore:
 
         with self.db.connect() as c:
             source_id = self._get_source_id(c)
-            ticker_id = self._ensure_ticker_id(c, ticker)  # ensures consistent ID use
+            ticker_id = self._get_ticker_id(c, source_id, ticker)
+            if ticker_id is None:
+                return []
 
             where = ["source_id = ?", "ticker_id = ?", "interval_sec = ?"]
             args: list[object] = [source_id, ticker_id, iv.seconds]
@@ -197,7 +215,14 @@ class SQLiteBarStore:
             args: list[object] = [source_id, iv.seconds]
 
             if tickers is not None and len(tickers) > 0:
-                ticker_ids = [self._ensure_ticker_id(c, t) for t in tickers]
+                ticker_ids = []
+                for t in tickers:
+                    tid = self._get_ticker_id(c, source_id, t)
+                    if tid is not None:
+                        ticker_ids.append(tid)
+                if not ticker_ids:
+                    return []
+
                 where.append(f"ticker_id IN ({','.join(['?'] * len(ticker_ids))})")
                 args.extend(ticker_ids)
 
