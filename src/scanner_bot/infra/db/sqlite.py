@@ -1,64 +1,48 @@
-# src/scanner_bot/infra/db/sqlite.py
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from contextlib import contextmanager
+from importlib import resources
+from pathlib import Path
 from collections.abc import Iterator
 
-DDL = """
-CREATE TABLE IF NOT EXISTS bars (
-  ticker     TEXT NOT NULL,
-  date       TEXT NOT NULL,   -- ISO YYYY-MM-DD
-  interval   TEXT NOT NULL,   -- "1d", "1h", ...
-  open       REAL,
-  high       REAL,
-  low        REAL,
-  close      REAL,
-  adj_close  REAL,
-  volume     REAL,
-  PRIMARY KEY (ticker, date, interval)
-);
 
-CREATE INDEX IF NOT EXISTS idx_bars_date_interval
-ON bars(date, interval);
+def _load_sql_scripts() -> list[str]:
+    pkg = "scanner_bot.infra.db.sql"
+    scripts: list[tuple[str, str]] = []
+    for entry in resources.files(pkg).iterdir():
+        if entry.is_file() and entry.name.endswith(".sql"):
+            scripts.append((entry.name, entry.read_text(encoding="utf-8")))
+    scripts.sort(key=lambda x: x[0])
+    return [txt for _, txt in scripts]
 
-CREATE INDEX IF NOT EXISTS idx_bars_ticker_interval_date
-ON bars(ticker, interval, date);
-"""
 
 class SQLiteDB:
     def __init__(self, db_path: str | Path, create_if_not_exists: bool = False) -> None:
         self.db_path = Path(db_path)
-
-        # Special-case tests if you ever use it
         if str(db_path) == ":memory:":
-            self._path_str = ":memory:"
-            with self.connect() as c:
-                c.executescript(DDL)
-            return
+            self._path = ":memory:"
+        else:
+            self._path = self.db_path.as_posix()
+            if not self.db_path.exists():
+                if not create_if_not_exists:
+                    raise FileNotFoundError(f"SQLite DB file not found: {self.db_path.resolve()}")
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._apply_schema()
 
-        self._path_str = str(self.db_path)
-
-        if not self.db_path.exists():
-            if not create_if_not_exists:
-                raise FileNotFoundError(
-                    f"SQLite DB file not found: {self.db_path.resolve()} "
-                    "(likely a wrong relative path)."
-                )
-            # create dirs only when we are allowed to create the DB file
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Ensure schema (safe + idempotent)
+    def _apply_schema(self) -> None:
+        scripts = _load_sql_scripts()
         with self.connect() as c:
-            c.executescript(DDL)
+            c.execute("PRAGMA foreign_keys = ON;")
+            c.execute("PRAGMA journal_mode = WAL;")
+            c.execute("PRAGMA synchronous = NORMAL;")
+            for script in scripts:
+                c.executescript(script)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        con = sqlite3.connect(self.db_path.as_posix())
+        con = sqlite3.connect(self._path)
         con.row_factory = sqlite3.Row
-        con.execute("PRAGMA journal_mode=WAL;")
-        con.execute("PRAGMA synchronous=NORMAL;")
         try:
             yield con
             con.commit()

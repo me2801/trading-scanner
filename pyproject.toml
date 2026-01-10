@@ -17,6 +17,9 @@ dependencies = [
     "yfinance>=1.0",
 ]
 
+[tool.hatch.build]
+include = ["src/scanner_bot/infra/db/sql/*.sql"]
+
 [project.scripts]
 scanner-app = "scanner_bot.app.app:main"
 scanner-api = "scanner_bot.api.app:main"

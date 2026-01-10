@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime
+from scanner_bot.core.intervals import Interval
 
 
 @dataclass(frozen=True, slots=True)
 class Bar:
-    date: date
+    ts_utc: datetime
     ticker: str
-    interval: str  # e.g. "1d", "1h"
+    interval: Interval
     open: float | None
     high: float | None
     low: float | None
     close: float | None
     adj_close: float | None
-    volume: float | None  # keep float for broad instrument compatibility
+    volume: float | None
 
     @property
     def adj_factor(self) -> float | None:
